@@ -1,64 +1,76 @@
-# AnyKernel3 Ramdisk Mod Script
+# AnyKernel2 Ramdisk Mod Script
 # osm0sis @ xda-developers
 
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=ExampleKernel by osm0sis @ xda-developers
-do.devicecheck=1
+kernel.string=InSaNiTy kernel by Ethan Johnson
+do.devicecheck=0
 do.modules=0
-do.systemless=1
-do.cleanup=1
+do.cleanup=0
 do.cleanuponabort=0
-device.name1=maguro
-device.name2=toro
-device.name3=toroplus
-device.name4=tuna
+device.name1=coral
+device.name2=flame
+device.name3=
+device.name4=
 device.name5=
-supported.versions=
-supported.patchlevels=
 '; } # end properties
 
 # shell variables
-block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;
-is_slot_device=0;
+block=/dev/block/bootdevice/by-name/boot;
+is_slot_device=1;
 ramdisk_compression=auto;
 
 
 ## AnyKernel methods (DO NOT CHANGE)
 # import patching functions/variables - see for reference
-. tools/ak3-core.sh;
+. /tmp/anykernel/tools/ak2-core.sh;
 
 
 ## AnyKernel file attributes
 # set permissions/ownership for included ramdisk files
-set_perm_recursive 0 0 755 644 $ramdisk/*;
-set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
+chmod -R 750 $ramdisk/*;
+chmod -R 755 $ramdisk/sbin;
+chown -R root:root $ramdisk/*;
 
 
 ## AnyKernel install
 dump_boot;
 
+if [ -d $ramdisk/.subackup -o -d $ramdisk/.backup ]; then
+  patch_cmdline "skip_override" "skip_override";
+else
+  patch_cmdline "skip_override" "";
+fi;
+
+# Patch dtbo.img on custom ROMs
+username="$(file_getprop /system/build.prop "ro.build.user")";
+echo "Found user: $username";
+case "$username" in
+  "android-build") user=google;;
+  *) user=custom;;
+esac;
+hostname="$(file_getprop /system/build.prop "ro.build.host")";
+echo "Found host: $hostname";
+case "$hostname" in
+  *corp.google.com|abfarm*) host=google;;
+  *) host=custom;;
+esac;
+if [ "$user" == "custom" -o "$host" == "custom" ]; then
+  if [ ! -z /tmp/anykernel/dtbo.img ]; then
+    ui_print " "; ui_print "You are on a custom ROM, patching kernel to remove verity...";
+    $bin/magiskboot --dtb-patch /tmp/anykernel/dtbo.img;
+    $bin/magiskboot --dtb-patch /tmp/anykernel/Image.lz4-dtb;
+    
+  fi;
+else
+  ui_print " "; ui_print "You are on stock, not patching kernel to remove verity!";
+fi;
+
 # begin ramdisk changes
-
-# init.rc
-backup_file init.rc;
-replace_string init.rc "cpuctl cpu,timer_slack" "mount cgroup none /dev/cpuctl cpu" "mount cgroup none /dev/cpuctl cpu,timer_slack";
-
-# init.tuna.rc
-backup_file init.tuna.rc;
-insert_line init.tuna.rc "nodiratime barrier=0" after "mount_all /fstab.tuna" "\tmount ext4 /dev/block/platform/omap/omap_hsmmc.0/by-name/userdata /data remount nosuid nodev noatime nodiratime barrier=0";
-append_file init.tuna.rc "bootscript" init.tuna;
-
-# fstab.tuna
-backup_file fstab.tuna;
-patch_fstab fstab.tuna /system ext4 options "noatime,barrier=1" "noatime,nodiratime,barrier=0";
-patch_fstab fstab.tuna /cache ext4 options "barrier=1" "barrier=0,nomblk_io_submit";
-patch_fstab fstab.tuna /data ext4 options "data=ordered" "nomblk_io_submit,data=writeback";
-append_file fstab.tuna "usbdisk" fstab;
-
 # end ramdisk changes
 
 write_boot;
+
 ## end install
 
